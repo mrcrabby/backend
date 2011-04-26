@@ -88,7 +88,7 @@ class Broker():
             self.read()
 
         def read(self):
-            self.stream.read_until('\n', self.cameaRecv)
+            self.stream.read_until('\n', self.cameraRecv)
 
         def cameraRecv(self, data):
             rtr_sock = ctx.socket(zmq.REQ)
@@ -100,6 +100,7 @@ class Broker():
         
         def routerRecv(self, data):
             print data
+            self.stream.write('Got tracker\r\n')
 
 
     def cameraRead(self, connection, address):
