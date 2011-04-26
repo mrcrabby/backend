@@ -13,6 +13,8 @@ import socket
 import sys
 import zmq
 
+from tornado import iostream
+
 from zmq.eventloop import ioloop, zmqstream
 loop = ioloop.IOLoop.instance()
 
@@ -44,7 +46,7 @@ class Tracker:
         icm_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM, 0)
         icm_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         icm_sock.setblocking(0)
-        icm_sock.bind(('', 3333))
+        icm_sock.bind(('', 11111))
         icm_sock.listen(128)
         callback = functools.partial(self.cameraConnect, icm_sock)
         loop.add_handler(icm_sock.fileno(), callback, loop.READ)
@@ -67,18 +69,19 @@ class Tracker:
                 raise
             return
         connection.setblocking(0)
-        callback = functools.partial(self.cameraRead, connection, address)
-        loop.add_callback(callback)
-
+        stream = iostream.IOStream(connection, loop)
+        stream.read_bytes(22, self.cameraRead)
+        #callback = functools.partial(self.cameraRead, connection, address)
+        #loop.add_callback(callback)
 
     def cameraRead(self, connection, address):
         try:
             message = connection.recv(10)
             logger.info('Camera client ready received: %s from %s' % (message, address))
-            connection.send('hello')
+            connection.send('hello\n')
             #connection.close()
-        except socket.error:
-            pass
+        except socket.error, e:
+            print e
             #logger.debug('icm read nothing')
         finally:
             callback = functools.partial(self.cameraRead, connection, address)

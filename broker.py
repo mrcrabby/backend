@@ -17,6 +17,8 @@ import time
 import zmq
 from zmq.utils.jsonapi import dumps, loads
 
+from tornado import iostream
+
 from zmq.eventloop import ioloop, zmqstream
 loop = ioloop.IOLoop.instance()
 
@@ -64,30 +66,52 @@ class Broker():
         self.workers = self.db['workers']
 
     def cameraConnect(self, sock, fd, events):
-
-	try:
-	    connection, address = sock.accept()
-	    logger.info('icm connection accepted')
-	except socket.error, e:
-	    if e.args[0] not in (errno.EWOULDBLOCK, errno.EAGAIN):
-		raise
-	    return
-	connection.setblocking(0)
-	callback = functools.partial(self.cameraRead, connection, address)
-	loop.add_callback(callback)
+        while True:
+	    try:
+	        connection, address = sock.accept()
+	        logger.info('icm connection accepted')
+	    except socket.error, e:
+	        if e.args[0] not in (errno.EWOULDBLOCK, errno.EAGAIN):
+		    raise
+	        return
+	    connection.setblocking(0)
+            stream = iostream.IOStream(connection, loop)
+            self.Connection(connection)
+            #self.cameraRead(connection, address)
+	    #callback = functools.partial(self.cameraRead, connection, address)
+	    #loop.add_callback(callback)
 	    
+    class Connection(object):
+
+        def __init__(self, connection):
+            self.stream = iostream.IOStream(connection, loop)
+            self.read()
+
+        def read(self):
+            self.stream.read_until('\n', self.cameaRecv)
+
+        def cameraRecv(self, data):
+            rtr_sock = ctx.socket(zmq.REQ)
+            rtr_sock.connect('tcp://127.0.0.1:7777')
+            self.rtr = zmqstream.ZMQStream(rtr_sock, loop)
+            self.rtr.on_recv(self.routerRecv)
+            #self.rtr.on_send(self.routerSend)
+            self.rtr.send_multipart(['becometracker', 'becometracker'])
+        
+        def routerRecv(self, data):
+            print data
+
 
     def cameraRead(self, connection, address):
 	try:
 	    message = connection.recv(10)
             self.createTracker(connection, message)
             logger.info('Camera client ready received: %s from %s' % (message, address))
-	    connection.send('hello')
+	    connection.send('hello\n')
 	    #connection.close()
-	except socket.error:
-            pass
-	    #logger.debug('icm read nothing')
-	finally:
+	except socket.error, e:
+            print e
+        finally:
 	    callback = functools.partial(self.cameraRead, connection, address)
 	    loop.add_callback(callback)
 
