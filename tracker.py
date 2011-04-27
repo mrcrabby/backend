@@ -13,6 +13,7 @@ import pymongo
 import random
 import socket
 import sys
+import time
 import zmq
 
 from tornado import iostream
@@ -39,6 +40,9 @@ class Tracker:
 
     def __init__(self, wrk, message):
 
+        self.ip = socket.gethostbyname(socket.gethostname())
+        print self.ip
+
         self.ctx = zmq.Context.instance()
         self.loop = ioloop.IOLoop.instance()
 
@@ -48,6 +52,7 @@ class Tracker:
         self.cameraCreate('camera')
         self.ctrackerStart()
         wrk.send_multipart(message) #notify router that role has change
+        wrk.close()
 
     def ctrackerStart(self):
         pass
@@ -107,7 +112,7 @@ class Tracker:
     def cameraRead(self):
         try:
             message = self.connection.recv(10)
-            logger.info('Camera client ready received: %s ' % message)
+            logger.info('camera client notification: %s ' % message)
             self.connection.send('hello\n')
             #connection.close()
         except socket.error, e:
@@ -121,12 +126,12 @@ class Tracker:
     def workerRequest(self):
         """
         request = {'timestamp': timestamp, 
-                   'task': detection,
+                   'task': 'detection',
                    'parameters': (...)}
         message = [dumps(request), image]
         """
 
-        request = {}
+        request = {'timestamp': time.time(), 'task': 'detection'}
         with open('mountain.jpg', 'rb') as f:
             self.rtr.send_multipart([dumps(request), f.read() ])
 
@@ -140,8 +145,9 @@ class Tracker:
         """
 
         response = loads(message[-1])
-        if response['timestamp'] > self.current+2: #congestion control...
-            self.cameraReconfigure()
+        logger.debug(response)
+        #if response['timestamp'] > self.current+2: #congestion control...
+        #    self.cameraReconfigure()
         #trk.send(response)
 
 
