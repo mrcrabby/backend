@@ -30,9 +30,9 @@ class Broker():
                      intelligent cameras' server 3333 (icm_sock)
 				      |
 				  ____|____
-				 |         |
-     workers 4444 (wrk_sock)  ---|  broker |--- GUI 2222 (gui_sock)
-				 |_________|
+     router 7777 (rtr_sock)   ---|         |
+                                 |  broker |--- GUI 2222 (gui_sock)
+     workers 4444 (wrk_sock)  ---|_________|
                                       |
                                       |
                       mongo database connection (db_conn)
@@ -61,10 +61,11 @@ class Broker():
         self.wrk.on_recv(self.workerRecv)
         self.wrk.on_send(self.workerSend)
 
-        db_conn = pymongo.Connection('localhost', 27017)
-        self.db = db_conn['database']
-        self.workers = self.db['workers']
-
+        #db_conn = pymongo.Connection('localhost', 27017)
+        #self.db = db_conn['database']
+        #self.workers = self.db['workers']
+    
+        
     def cameraConnect(self, sock, fd, events):
         while True:
 	    try:
@@ -96,7 +97,7 @@ class Broker():
             self.rtr = zmqstream.ZMQStream(rtr_sock, loop)
             self.rtr.on_recv(self.routerRecv)
             #self.rtr.on_send(self.routerSend)
-            self.rtr.send_multipart(['becometracker', 'becometracker'])
+            self.rtr.send_multipart([dumps({'timestamp': time.time(), 'task': 'tracking'}), ''])
         
         def routerRecv(self, data):
             print data
@@ -116,12 +117,6 @@ class Broker():
 	    callback = functools.partial(self.cameraRead, connection, address)
 	    loop.add_callback(callback)
 
-
-    def createTracker(self, connection, message):
-        #connection.send(tracker)
-        pass
-
-
     def workerRecv(self, message):
         logger.info('Message from worker')
 	command, address, speed =  loads(''.join(message))
@@ -139,7 +134,7 @@ class Broker():
     def guiRecv(self, message):
 	print message 
 	self.gui.send_multipart(message) 
-
+    
     def workerSend(self, message, *args):
 	print 'sending: ',
 	print message 
@@ -147,6 +142,7 @@ class Broker():
     def guiSend(self, message, *args):
 	print 'sending: ',
 	print message 
+
 
 if __name__ == '__main__':
     broker  = Broker()   
