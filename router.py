@@ -56,11 +56,17 @@ class Router:
                logger.debug('trk_addr: %s' % trk_addr)
 
                if trk_addr != 'ready':
-
                    empty = wrk_sock.recv()
                    assert empty == ''
                    reply = wrk_sock.recv(copy=False)
                    logger.debug('reply: %s' % reply)
+                   
+                   command = wrk_sock.recv()
+                   if command == 'finish':
+                       logger.debug('finish worker: %s' % wrk_addr)
+                       workers.pop()
+                       available_workers -= 1
+                   
                    trk_sock.send_multipart([trk_addr, '', wrk_addr, '', reply])
 
             if available_workers > 0:
@@ -69,8 +75,10 @@ class Router:
                 if trk_sock in active_socks and active_socks[trk_sock] == zmq.POLLIN:
                     logger.debug('activity on trackers')                
 	            trk_addr = trk_sock.recv()
+                    #logger.debug('trk_addr: %s' % trk_addr)                
 	    
   	            empty = trk_sock.recv()
+                    #logger.debug('empty?: %s' % empty)                
 	            assert empty == ''
   	            request = trk_sock.recv(copy=False)
 	            logger.debug('request: %s' % request)

@@ -1,12 +1,4 @@
-import logging
-logger = logging.getLogger('worker_log')
-logger.setLevel(logging.DEBUG)
-handler = logging.StreamHandler()
-formater = logging.Formatter("%(levelname)s %(asctime)s %(funcName)s %(lineno)d %(message)s")
-handler.setFormatter(formater)
-logger.addHandler(handler)
-
-
+import mylog
 import collections
 import errno
 import functools
@@ -39,7 +31,8 @@ class Tracker:
 
     """
 
-    def __init__(self, wrk, message):
+    def __init__(self, wrk=None, message=None):
+        self.logger = mylog.logstart('tracker_log')
 
         self.fifo_send = collections.deque()
         self.fifo_recv = collections.deque()
@@ -52,10 +45,12 @@ class Tracker:
         self.brokerSubscribe()
         self.cameraCreate('camera server')
         self.ctrackerStart()
-        message[-1] = self.camera_port
-        logger.debug('respond to broker, being tracker, from worker sock (: %s' % message)
-        wrk.send_multipart(message) #notify router that role has change
-        #wrk.close() #not so fast
+
+        if message and wrk:
+            message[-2] = self.camera_port
+            self.logger.debug('respond to broker, being tracker, from worker sock (: %s' % message)
+            wrk.send_multipart(message) #notify router that role has change
+            #wrk.close() #not so fast
 
     def ctrackerStart(self):
         pass
@@ -73,8 +68,8 @@ class Tracker:
         self.rtr = zmqstream.ZMQStream(rtr_sock, self.loop)
         self.rtr.on_recv(self.routerRecv)
         self.rtr.on_send(self.routerSend)
-        self.tasks = ioloop.PeriodicCallback(self.workerRequest, 1, self.loop)
-        self.tasks.start()
+        #self.tasks = ioloop.PeriodicCallback(self.workerRequest, 10000, self.loop)
+        #self.tasks.start()
     
     def cameraCreate(self, camera):
         
@@ -100,29 +95,28 @@ class Tracker:
             pass
 
     def cameraConnect(self, sock, fd, events):
-
-        try:
-            self.connection, address = sock.accept()
-            logger.info('icm connection accepted')
-        except socket.error, e:
-            if e.args[0] not in (errno.EWOULDBLOCK, errno.EAGAIN):
-                raise
-            return
-        self.connection.setblocking(0)
-        stream = iostream.IOStream(self.connection, self.loop)
-        stream.read_until('\n', self.cameraRead)
+        while True:
+            try:
+                self.connection, address = sock.accept()
+                self.logger.info('icm connection accepted')
+            except socket.error, e:
+                if e.args[0] not in (errno.EWOULDBLOCK, errno.EAGAIN):
+                    raise
+                return
+            self.connection.setblocking(0)
+            self.stream = iostream.IOStream(self.connection, self.loop)
+            self.stream.read_until('\r\n', self.cameraRead)
 
     def cameraRead(self, message):
         try:
-            logger.info('camera client notification: %s ' % message)
+            self.logger.info('camera client notification: %s ' % message)
             self.fifo_send.append(message)
             self.fifo_recv.append(message)
-            #self.connection.send('hello\n')
-            #connection.close()
+            self.workerRequest()
         except socket.error, e:
             print e
-        finally:
-            self.loop.add_callback(self.cameraRead)
+        #self.loop.add_callback(icm_sock.fileno(), callback, loop.READ)
+        self.stream.read_until('\r\n', self.cameraRead)
 
     def cameraReconfigure(self):
         self.connection.send('reconfigure\r\n')
@@ -134,12 +128,14 @@ class Tracker:
                    'parameters': (...)}
         message = [dumps(request), image]
         """
-        
+
+        self.logger.debug('fifo_send %s fifo_recv %s' % (len(self.fifo_send), len(self.fifo_recv)))       
         if len(self.fifo_send) > 0:
             timestamp = self.fifo_send.popleft()
             request = {'timestamp': timestamp, 'task': 'detection'}
             with open('mountain.jpg', 'rb') as f:
-                self.rtr.send_multipart([dumps(request), f.read() ])
+                self.rtr.send_multipart([dumps(request), f.read()])
+            self.logger.debug('request should be sent')       
 
     def routerSend(self, *args):
         pass
@@ -151,7 +147,7 @@ class Tracker:
         """
 
         response = loads(message[-1])
-        logger.debug(response)
+        self.logger.debug(response)
         self.fifo_recv.popleft()
 
         if len(self.fifo_recv) > 20: #congestion control...
@@ -169,7 +165,6 @@ class Tracker:
 
 
 if __name__ == '__main__':
-    ctx = zmq.Context()
     tracker = Tracker()
     loop.start()
                            

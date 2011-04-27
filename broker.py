@@ -1,16 +1,8 @@
 import datetime
 import errno
 import functools
-import logging
+import mylog
 import pymongo
-
-logger = logging.getLogger('broker_log')
-logger.setLevel(logging.DEBUG)
-handler = logging.StreamHandler()
-formater = logging.Formatter("%(levelname)s %(asctime)s %(funcName)s %(lineno)d %(message)s")
-handler.setFormatter(formater)
-logger.addHandler(handler)
-										
 import socket
 import time
 
@@ -40,7 +32,8 @@ class Broker():
     """
 
     def __init__(self):
-
+        self.logger = mylog.logstart('broker_log')
+        
 	gui_sock = ctx.socket(zmq.REP)
 	gui_sock.bind('tcp://*:2222')
 	self.gui = zmqstream.ZMQStream(gui_sock, loop)
@@ -70,45 +63,43 @@ class Broker():
         while True:
 	    try:
 	        connection, address = sock.accept()
-	        logger.info('icm connection accepted')
+	        self.logger.info('icm connection accepted')
 	    except socket.error, e:
 	        if e.args[0] not in (errno.EWOULDBLOCK, errno.EAGAIN):
 		    raise
 	        return
 	    connection.setblocking(0)
             stream = iostream.IOStream(connection, loop)
-            self.Connection(connection)
-            #self.cameraRead(connection, address)
-	    #callback = functools.partial(self.cameraRead, connection, address)
-	    #loop.add_callback(callback)
+            self.Connection(connection, self.logger)
 	    
     class Connection(object):
 
-        def __init__(self, connection):
+        def __init__(self, connection, logger):
+            self.logger = logger
             self.stream = iostream.IOStream(connection, loop)
             self.read()
 
         def read(self):
-            self.stream.read_until('\n', self.cameraRecv)
+            self.stream.read_until('\r\n', self.cameraRecv)
 
         def cameraRecv(self, data):
+            self.logger.debug('camera said: %s' % data)
             rtr_sock = ctx.socket(zmq.REQ)
             rtr_sock.connect('tcp://127.0.0.1:7777')
             self.rtr = zmqstream.ZMQStream(rtr_sock, loop)
             self.rtr.on_recv(self.routerRecv)
-            #self.rtr.on_send(self.routerSend)
             self.rtr.send_multipart([dumps({'timestamp': time.time(), 'task': 'tracking'}), ''])
         
         def routerRecv(self, data):
-            logger.debug('tracker response: %s' % data)
-            self.stream.write(data[-1])
+            self.logger.debug('tracker response: %s' % data[-1])
+            self.stream.write('%s\r\n' % data[-1])
 
 
     def cameraRead(self, connection, address):
 	try:
 	    message = connection.recv(10)
             self.createTracker(connection, message)
-            logger.info('Camera client ready received: %s from %s' % (message, address))
+            self.logger.info('Camera client ready received: %s from %s' % (message, address))
 	    connection.send('hello\n')
 	    #connection.close()
 	except socket.error, e:
@@ -118,7 +109,7 @@ class Broker():
 	    loop.add_callback(callback)
 
     def workerRecv(self, message):
-        logger.info('Message from worker')
+        self.logger.info('Message from worker')
 	command, address, speed =  loads(''.join(message))
         if command == 'register':
             self.workers.insert({'state': 'registered', 'address': address, 'speed': speed})

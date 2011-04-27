@@ -51,6 +51,8 @@ class Worker:
 
     def routerRecv(self, message):
         """
+        message = [ ... , request, image/blank]
+
         request = {'timestamp': timestamp, 
                    'task': 'detection'/'recognition'/'tracking',
                    'parameters': (...)}
@@ -61,15 +63,19 @@ class Worker:
             self.logger.debug('start detection')
             with open('image.jpg', 'wb') as f:
                 f.write(message[-1])
-            sleep = random.randint(1, 10)
+            sleep = random.randint(1, 2) #detection
             time.sleep(sleep)
-            message = message[:-1]
-            message[-1] = dumps('detection')
+            message[-2] = dumps('detection')
+            message[-1] = ''
             self.rtr.send_multipart(message)
         
         elif request['task'] == 'tracking':
             self.logger.debug('prepare to tracking')
+            message[-1] = 'finish'
             tracker.Tracker(self.rtr, message)
+        else:
+            self.logger.debug('requested task is not supported')
+
 
     def brokerSend(self):
         pass
