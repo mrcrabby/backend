@@ -100,8 +100,8 @@ class Broker():
             self.rtr.send_multipart([dumps({'timestamp': time.time(), 'task': 'tracking'}), ''])
         
         def routerRecv(self, data):
-            print data
-            self.stream.write('Got tracker\r\n')
+            logger.debug('tracker response: %s' % data)
+            self.stream.write(data[-1])
 
 
     def cameraRead(self, connection, address):

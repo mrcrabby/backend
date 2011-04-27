@@ -1,23 +1,13 @@
-import logging
-logger = logging.getLogger('worker_log')
-logger.setLevel(logging.DEBUG)
-handler = logging.StreamHandler()
-formater = logging.Formatter("%(levelname)s %(asctime)s %(funcName)s %(lineno)d %(message)s")
-handler.setFormatter(formater)
-logger.addHandler(handler)
-
+import mylog
 import pymongo
 import random
 import sys
 import time
+import tracker
 import zmq
 
 from zmq.eventloop import ioloop, zmqstream
-loop = ioloop.IOLoop.instance()
-
 from zmq.utils.jsonapi import dumps, loads
-
-from tracker import Tracker
 
 class Worker:
     """ 	                
@@ -34,7 +24,8 @@ class Worker:
 
     """
 
-    def __init__(self, ctx):
+    def __init__(self):
+        self.logger = mylog.logstart('worker_log')
 
         self.ctx = zmq.Context.instance()
         self.loop = ioloop.IOLoop.instance()
@@ -52,9 +43,10 @@ class Worker:
         self.rtr.on_recv(self.routerRecv)
         self.rtr.on_send(self.routerSend)
         self.rtr.send('ready')
+        self.loop.start()
 
     def routerSend(self, *args):
-        #logger.debug('sent to router: %s' % str(args))
+        #self.logger.debug('sent to router: %s' % str(args))
         pass 
 
     def routerRecv(self, message):
@@ -66,7 +58,7 @@ class Worker:
         request = loads(message[-2])
         
         if request['task'] == 'detection':
-            logger.debug('start detection')
+            self.logger.debug('start detection')
             with open('image.jpg', 'wb') as f:
                 f.write(message[-1])
             sleep = random.randint(1, 10)
@@ -76,8 +68,8 @@ class Worker:
             self.rtr.send_multipart(message)
         
         elif request['task'] == 'tracking':
-            logger.debug('prepare to tracking')
-            Tracker(self.rtr, message)
+            self.logger.debug('prepare to tracking')
+            tracker.Tracker(self.rtr, message)
 
     def brokerSend(self):
         pass
@@ -108,6 +100,4 @@ class Worker:
         pass
 
 if __name__ == '__main__':
-    ctx = zmq.Context()
-    worker = Worker(ctx)
-    loop.start()
+    worker = Worker()
